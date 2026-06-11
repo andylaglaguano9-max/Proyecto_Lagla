@@ -1,46 +1,142 @@
 # Proyecto_Lagla
 
-Sistema distribuido de detección de prompts maliciosos para entornos SCADA y redes eléctricas. Compuesto por tres microservicios que se comunican via ZeroTier.
+**Sistema distribuido de detección de prompts maliciosos para entornos SCADA y redes eléctricas.**
 
-## Arquitectura del proyecto
+Arquitectura de microservicios interconectados via ZeroTier, compuesta por tres componentes principales: clasificador semántico (RoBERTa), middleware de seguridad y API bridge para modelo de lenguaje local (Ollama).
+
+---
+
+## Arquitectura del sistema
 
 ```mermaid
-graph TB
-    subgraph ZeroTier["Red ZeroTier 8286ac0e47f0ab7a"]
+flowchart TB
+    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    %%  CAPA EXTERNA - CLIENTE
+    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    CLIENTE(("`**Cliente HTTP**`"))
+
+    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    %%  RED ZEROTIER - ENTORNO DISTRIBUIDO
+    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    subgraph ZT["Red Privada ZeroTier — 8286ac0e47f0ab7a"]
         direction TB
-        subgraph Andy["👤 Andy - Mistral (Puerto 8000)"]
-            API[API Bridge<br>api_chat.py] -->|POST :11434/api/generate| OLLAMA[Ollama Service]
-            OLLAMA --> MODELO[Modelo Local<br>qwen2.5-coder:7b]
+
+        %% ── JEFFERSON: MIDDLEWARE ──
+        subgraph J["⚙️ Jefferson — Middleware de Seguridad"]
+            direction TB
+            MID_IN[("`**POST /check-prompt**`")]
+            MID_DEC{{"`Análisis de<br>prompt`"}}
+            MID_IN --> MID_DEC
         end
-        subgraph Noelia["👤 Noelia - RoBERTa (FastAPI)"]
-            ROBERTA[Clasificador Semántico<br>RoBERTa-base]
+
+        %% ── NOELIA: ROBERTA CLASSIFIER ──
+        subgraph N["🤖 Noelia — Clasificador Semántico RoBERTa"]
+            direction TB
+            ROB_API[("`**POST /classify**`")]
+            ROB_MODEL[["`RoBERTa-base<br>SCADA / Redes Eléctricas`"]]
+            ROB_API --> ROB_MODEL
         end
-        subgraph Jefferson["👤 Jefferson - Middleware"]
-            MIDDLE[Middleware<br>Detección de Prompts]
+
+        %% ── ANDY: MISTRAL API BRIDGE ──
+        subgraph A["🧠 Andy — API Bridge Mistral / Ollama"]
+            direction TB
+            API_BRIDGE[("`**API Bridge**<br>api_chat.py`")]
+            subgraph OLLAMA_INTERNAL["Stack Local (localhost)"]
+                direction LR
+                OLLAMA_SVC["`**Ollama Service**<br>puerto :11434`"]
+                MODELO[["`**Modelo Local**<br>qwen2.5-coder:7b<br>4.1 GB`"]]
+                OLLAMA_SVC <--> MODELO
+            end
+            API_BRIDGE -->|POST /api/generate| OLLAMA_SVC
         end
     end
 
-    CLIENTE[Cliente HTTP] -->|POST /check-prompt| MIDDLE
-    MIDDLE -->|POST /classify| ROBERTA
-    MIDDLE -->|POST /chat| API
-    MIDDLE --> CLIENTE
+    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    %%  FLUJO DE DATOS
+    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    CLIENTE -->|"POST http://IP-JEFFERSON:PUERTO/check-prompt"| MID_IN
+    MID_DEC -->|"`**safe / suspicious** → consulta`"| ROB_API
+    MID_DEC -->|"`**malicious** → bloquea`"| CLIENTE
+    ROB_API -->|"`**label + score**`"| MID_DEC
+    MID_DEC -->|"`prompt validado`"| API_BRIDGE
+    API_BRIDGE -->|"`**respuesta generada**`"| MID_DEC
+    MID_DEC -->|"`**respuesta final**`"| CLIENTE
 
-    style Andy fill:#e1f5fe,stroke:#01579b
-    style Noelia fill:#f3e5f5,stroke:#7b1fa2
-    style Jefferson fill:#fff3e0,stroke:#e65100
-    style ZeroTier fill:#f5f5f5,stroke:#616161,stroke-dasharray: 5 5
+    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    %%  ESTILOS
+    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    style ZT fill:#f8f9fa,stroke:#495057,stroke-width:2px,stroke-dasharray: 8 4
+    style J fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style N fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style A fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style OLLAMA_INTERNAL fill:#e8f5e9,stroke:#2e7d32,stroke-width:1px
+    style CLIENTE fill:#eeeeee,stroke:#424242,stroke-width:2px
+    style MODELO fill:#c8e6c9,stroke:#1b5e20
+    style MID_DEC fill:#ffe0b2,stroke:#e65100
 ```
 
-## Componente actual (Andy): Mistral API Bridge
+## Leyenda del diagrama
 
-API REST en Python que funciona como puente entre clientes HTTP y Ollama, exponiendo modelos de lenguaje locales a través de la red ZeroTier.
+| Símbolo | Significado |
+|---------|-------------|
+| `( )` | Endpoint de entrada/salida (API) |
+| `{ }` | Decisión / lógica condicional |
+| `[[ ]]` | Modelo de IA / datos persistentes |
+| `[ ]` | Servicio o proceso interno |
+| Línea sólida | Flujo de datos principal |
+| Línea discontinua | Límite de red ZeroTier |
 
-## Endpoints
+---
+
+## Flujo de una solicitud
+
+```
+CLIENTE                          MIDDLEWARE (Jeff)                  ROBERTA (Noelia)
+   │                                      │                              │
+   │  POST /check-prompt                  │                              │
+   │  {"prompt": "..."}                  │                              │
+   ├─────────────────────────────────────►│                              │
+   │                                      │  POST /classify              │
+   │                                      │  {"prompt": "..."}          │
+   │                                      ├─────────────────────────────►│
+   │                                      │                              │
+   │                                      │◄─────────────────────────────┤
+   │                                      │  {"label":"safe",            │
+   │                                      │   "score":0.98}             │
+   │                                      │                              │
+   │                                      │  ─── si safe/suspicious ──  │
+   │                                      │                              │
+   │                                      │  POST /chat                  │
+   │                                      │  {"prompt": "..."}          │
+   │                                      ├──────────────────────┐       │
+   │                                      │                      │       │
+   │                                      │           ┌──────────▼────┐  │
+   │                                      │           │ ANDY - Ollama │  │
+   │                                      │           │ api_chat.py   │  │
+   │                                      │           │ → qwen2.5     │  │
+   │                                      │           └──────────┬────┘  │
+   │                                      │                      │       │
+   │                                      │◄─────────────────────┘       │
+   │                                      │  {"respuesta":"...",         │
+   │                                      │   "status":"ok"}            │
+   │                                      │                              │
+   │◄─────────────────────────────────────┤                              │
+   │  {"respuesta":"...","clasificacion": │                              │
+   │   "safe","status":"ok"}             │                              │
+```
+
+---
+
+## Componente Andy: API Bridge Mistral / Ollama
+
+API REST en Python puro (sin dependencias externas) que expone modelos de lenguaje locales a través de la red ZeroTier.
+
+### Endpoints
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | `GET` | `/health` | Health check del servidor |
-| `GET` | `/chat` | Respuesta de prueba (hello world) |
+| `GET` | `/chat` | Respuesta de prueba |
 | `POST` | `/chat` | Envía un prompt al modelo local |
 
 ### Ejemplo POST /chat
@@ -62,26 +158,17 @@ Respuesta:
 }
 ```
 
-## Requisitos
+### Stack tecnológico
 
-- **Python 3.12+**
-- **Ollama** instalado y corriendo en `http://localhost:11434`
-- Un modelo descargado en Ollama (ej. `qwen2.5-coder:7b`, `mistral`, `llama3`, etc.)
+| Componente | Tecnología |
+|------------|-----------|
+| Servidor HTTP | Python `http.server.ThreadingHTTPServer` |
+| Backend LLM | Ollama 0.24.0 |
+| Modelo | qwen2.5-coder:7b (Q8, 4.1 GB) |
+| Red privada | ZeroTier 1.16.2 — Red: `8286ac0e47f0ab7a` |
+| SO | Windows 11 Pro |
 
-## Instalación y uso
-
-```powershell
-# 1. Clonar o descargar el proyecto
-cd MistralOllama
-
-# 2. Iniciar el servidor
-python api_chat.py
-
-# 3. Probar health check
-curl http://localhost:8000/health
-```
-
-El servidor se levanta en `http://0.0.0.0:8000`.
+---
 
 ## Scripts incluidos
 
@@ -93,6 +180,8 @@ El servidor se levanta en `http://0.0.0.0:8000`.
 | `validar_ollama.ps1` | Suite de verificación del entorno |
 | `fix_zerotier.ps1` | Soluciona problemas de conexión ZeroTier |
 
+---
+
 ## Personalizar el modelo
 
 Edita las variables al inicio de `api_chat.py`:
@@ -102,6 +191,8 @@ OLLAMA_HOST = "http://localhost:11434"
 MODELO = "qwen2.5-coder:7b"   # Cambia por el modelo que prefieras
 PUERTO = 8000
 ```
+
+---
 
 ## Licencia
 
