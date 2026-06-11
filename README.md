@@ -1,18 +1,39 @@
-# MistralOllama API Bridge
+# Proyecto_Lagla
 
-API REST en Python que funciona como puente entre clientes HTTP y Ollama, permitiendo interactuar con modelos de lenguaje locales (como Qwen2.5-Coder, Mistral, etc.) a través de una interfaz simple.
+Sistema distribuido de detección de prompts maliciosos para entornos SCADA y redes eléctricas. Compuesto por tres microservicios que se comunican via ZeroTier.
 
-## Arquitectura
+## Arquitectura del proyecto
 
 ```mermaid
-graph LR
-    A[Cliente HTTP] -->|GET/POST :8000| B[API Bridge<br>api_chat.py]
-    B -->|POST :11434/api/generate| C[Ollama Service]
-    C --> D[Modelo Local<br>qwen2.5-coder:7b]
-    D --> C
-    C --> B
-    B --> A
+graph TB
+    subgraph ZeroTier["Red ZeroTier 8286ac0e47f0ab7a"]
+        direction TB
+        subgraph Andy["👤 Andy - Mistral (Puerto 8000)"]
+            API[API Bridge<br>api_chat.py] -->|POST :11434/api/generate| OLLAMA[Ollama Service]
+            OLLAMA --> MODELO[Modelo Local<br>qwen2.5-coder:7b]
+        end
+        subgraph Noelia["👤 Noelia - RoBERTa (FastAPI)"]
+            ROBERTA[Clasificador Semántico<br>RoBERTa-base]
+        end
+        subgraph Jefferson["👤 Jefferson - Middleware"]
+            MIDDLE[Middleware<br>Detección de Prompts]
+        end
+    end
+
+    CLIENTE[Cliente HTTP] -->|POST /check-prompt| MIDDLE
+    MIDDLE -->|POST /classify| ROBERTA
+    MIDDLE -->|POST /chat| API
+    MIDDLE --> CLIENTE
+
+    style Andy fill:#e1f5fe,stroke:#01579b
+    style Noelia fill:#f3e5f5,stroke:#7b1fa2
+    style Jefferson fill:#fff3e0,stroke:#e65100
+    style ZeroTier fill:#f5f5f5,stroke:#616161,stroke-dasharray: 5 5
 ```
+
+## Componente actual (Andy): Mistral API Bridge
+
+API REST en Python que funciona como puente entre clientes HTTP y Ollama, exponiendo modelos de lenguaje locales a través de la red ZeroTier.
 
 ## Endpoints
 
