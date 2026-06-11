@@ -10,122 +10,31 @@ Arquitectura de microservicios interconectados via ZeroTier, compuesta por tres 
 
 ```mermaid
 flowchart TB
-    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    %%  CAPA EXTERNA - CLIENTE
-    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    CLIENTE(("`**Cliente HTTP**`"))
-
-    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    %%  RED ZEROTIER - ENTORNO DISTRIBUIDO
-    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    subgraph ZT["Red Privada ZeroTier — 8286ac0e47f0ab7a"]
-        direction TB
-
-        %% ── JEFFERSON: MIDDLEWARE ──
-        subgraph J["⚙️ Jefferson — Middleware de Seguridad"]
+    subgraph ZT["ZeroTier Network - 8286ac0e47f0ab7a"]
+        
+        subgraph MID["Jefferson - Middleware"]
             direction TB
-            MID_IN[("`**POST /check-prompt**`")]
-            MID_DEC{{"`Análisis de<br>prompt`"}}
-            MID_IN --> MID_DEC
+            EP1["POST /check-prompt"] --> DEC{"Clasificar<br>prompt"}
         end
 
-        %% ── NOELIA: ROBERTA CLASSIFIER ──
-        subgraph N["🤖 Noelia — Clasificador Semántico RoBERTa"]
-            direction TB
-            ROB_API[("`**POST /classify**`")]
-            ROB_MODEL[["`RoBERTa-base<br>SCADA / Redes Eléctricas`"]]
-            ROB_API --> ROB_MODEL
+        subgraph CLS["Noelia - RoBERTa Classifier"]
+            EP2["POST /classify"] --> RB["RoBERTa-base<br>SCADA Model"]
         end
 
-        %% ── ANDY: MISTRAL API BRIDGE ──
-        subgraph A["🧠 Andy — API Bridge Mistral / Ollama"]
-            direction TB
-            API_BRIDGE[("`**API Bridge**<br>api_chat.py`")]
-            subgraph OLLAMA_INTERNAL["Stack Local (localhost)"]
-                direction LR
-                OLLAMA_SVC["`**Ollama Service**<br>puerto :11434`"]
-                MODELO[["`**Modelo Local**<br>qwen2.5-coder:7b<br>4.1 GB`"]]
-                OLLAMA_SVC <--> MODELO
-            end
-            API_BRIDGE -->|POST /api/generate| OLLAMA_SVC
+        subgraph LLM["Andy - Mistral / Ollama"]
+            API["api_chat.py<br>Port 8000"] --> OLL["Ollama Service<br>Port 11434"]
+            OLL --> M["qwen2.5-coder:7b<br>Q8 - 4.1GB"]
         end
+
     end
 
-    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    %%  FLUJO DE DATOS
-    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    CLIENTE -->|"POST http://IP-JEFFERSON:PUERTO/check-prompt"| MID_IN
-    MID_DEC -->|"`**safe / suspicious** → consulta`"| ROB_API
-    MID_DEC -->|"`**malicious** → bloquea`"| CLIENTE
-    ROB_API -->|"`**label + score**`"| MID_DEC
-    MID_DEC -->|"`prompt validado`"| API_BRIDGE
-    API_BRIDGE -->|"`**respuesta generada**`"| MID_DEC
-    MID_DEC -->|"`**respuesta final**`"| CLIENTE
-
-    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    %%  ESTILOS
-    %%━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    style ZT fill:#f8f9fa,stroke:#495057,stroke-width:2px,stroke-dasharray: 8 4
-    style J fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style N fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
-    style A fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style OLLAMA_INTERNAL fill:#e8f5e9,stroke:#2e7d32,stroke-width:1px
-    style CLIENTE fill:#eeeeee,stroke:#424242,stroke-width:2px
-    style MODELO fill:#c8e6c9,stroke:#1b5e20
-    style MID_DEC fill:#ffe0b2,stroke:#e65100
+    C["Client"] -->|"POST /check-prompt"| EP1
+    DEC -->|"classify prompt"| EP2
+    RB -->|"label + score"| DEC
+    DEC -->|"forward prompt"| API
+    API -->|"response"| DEC
+    DEC -->|"final response"| C
 ```
-
-## Leyenda del diagrama
-
-| Símbolo | Significado |
-|---------|-------------|
-| `( )` | Endpoint de entrada/salida (API) |
-| `{ }` | Decisión / lógica condicional |
-| `[[ ]]` | Modelo de IA / datos persistentes |
-| `[ ]` | Servicio o proceso interno |
-| Línea sólida | Flujo de datos principal |
-| Línea discontinua | Límite de red ZeroTier |
-
----
-
-## Flujo de una solicitud
-
-```
-CLIENTE                          MIDDLEWARE (Jeff)                  ROBERTA (Noelia)
-   │                                      │                              │
-   │  POST /check-prompt                  │                              │
-   │  {"prompt": "..."}                  │                              │
-   ├─────────────────────────────────────►│                              │
-   │                                      │  POST /classify              │
-   │                                      │  {"prompt": "..."}          │
-   │                                      ├─────────────────────────────►│
-   │                                      │                              │
-   │                                      │◄─────────────────────────────┤
-   │                                      │  {"label":"safe",            │
-   │                                      │   "score":0.98}             │
-   │                                      │                              │
-   │                                      │  ─── si safe/suspicious ──  │
-   │                                      │                              │
-   │                                      │  POST /chat                  │
-   │                                      │  {"prompt": "..."}          │
-   │                                      ├──────────────────────┐       │
-   │                                      │                      │       │
-   │                                      │           ┌──────────▼────┐  │
-   │                                      │           │ ANDY - Ollama │  │
-   │                                      │           │ api_chat.py   │  │
-   │                                      │           │ → qwen2.5     │  │
-   │                                      │           └──────────┬────┘  │
-   │                                      │                      │       │
-   │                                      │◄─────────────────────┘       │
-   │                                      │  {"respuesta":"...",         │
-   │                                      │   "status":"ok"}            │
-   │                                      │                              │
-   │◄─────────────────────────────────────┤                              │
-   │  {"respuesta":"...","clasificacion": │                              │
-   │   "safe","status":"ok"}             │                              │
-```
-
----
 
 ## Componente Andy: API Bridge Mistral / Ollama
 
