@@ -34,19 +34,6 @@ flowchart TB
     DEC -->|"forward prompt"| API
     API -->|"response"| DEC
     DEC -->|"final response"| C
-
-    style ZT fill:#e8f4f8,stroke:#2c7a9e,stroke-width:2,stroke-dasharray: 6 3
-    style MID fill:#fff3e0,stroke:#e65100,stroke-width:2
-    style CLS fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2
-    style LLM fill:#e3f2fd,stroke:#1565c0,stroke-width:2
-    style C fill:#e8f5e9,stroke:#2e7d32,stroke-width:2
-    style EP1 fill:#ffe0b2,stroke:#e65100
-    style DEC fill:#ffe0b2,stroke:#e65100
-    style EP2 fill:#e1bee7,stroke:#7b1fa2
-    style RB fill:#ce93d8,stroke:#6a1b9a
-    style API fill:#90caf9,stroke:#1565c0
-    style OLL fill:#81c784,stroke:#2e7d32
-    style M fill:#a5d6a7,stroke:#1b5e20
 ```
 
 ## Componente Andy: API Bridge Mistral / Ollama
